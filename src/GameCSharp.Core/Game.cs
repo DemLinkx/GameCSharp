@@ -13,6 +13,8 @@ public sealed class Game
     private readonly Player whitePlayer;
     private readonly Player blackPlayer;
     private readonly Dictionary<string, int> repetitions = [];
+    private readonly List<string> moveHistory = [];
+    private readonly List<Point> currentRoute = [];
     private int quietKingMoves;
 
     public Player CurrentPlayer { get; private set; }
@@ -21,12 +23,14 @@ public sealed class Game
     public bool IsFinished => Winner is not null || Draw is not null;
     public Point? ContinuingFrom { get; private set; }
     public IReadOnlyList<Move> LegalMoves { get; private set; } = Array.Empty<Move>();
+    public IReadOnlyList<string> MoveHistory { get; }
 
     public Game(string whiteName = "Белые", string blackName = "Чёрные")
     {
         whitePlayer = new Player(whiteName, isWhite: true);
         blackPlayer = new Player(blackName, isWhite: false);
         CurrentPlayer = whitePlayer;
+        MoveHistory = moveHistory.AsReadOnly();
         StartGame();
     }
 
@@ -38,16 +42,18 @@ public sealed class Game
         Winner = null;
         Draw = null;
         quietKingMoves = 0;
+        currentRoute.Clear();
+        moveHistory.Clear();
         repetitions.Clear();
         LegalMoves = FindLegalMoves();
         RecordPosition();
     }
 
-    public Piece? PieceAt(Point point) => board.GetPiece(point.X, point.Y);
+    public Checker? PieceAt(Point point) => board.GetPiece(point.X, point.Y);
 
     public bool WasCapturedThisTurn(Point point) => board.WasCaptured(point);
 
-    public int CountPieces(bool isWhite) => BoardPieces().Count(piece => piece.IsWhite() == isWhite);
+    public int CountPieces(bool isWhite) => OccupiedCells().Count(cell => cell.Figure.GetColor() == isWhite);
 
     public bool MakeMove(Point from, Point to)
     {
@@ -78,17 +84,23 @@ public sealed class Game
 
     private void Apply(Move move)
     {
-        Piece piece = PieceAt(move.From)!;
+        Checker checker = PieceAt(move.From)!;
+        bool isWhite = checker.GetColor();
         board.MovePiece(move.From, move.To);
-        int promotionRow = piece.IsWhite() ? 0 : Board.Size - 1;
-        if (piece is Checker && move.To.Y == promotionRow)
-            board.Promote(move.To, piece.IsWhite());
+
+        if (currentRoute.Count == 0)
+            currentRoute.Add(move.From);
+        currentRoute.Add(move.To);
+
+        int promotionRow = isWhite ? 0 : Board.Size - 1;
+        if (checker is not King && move.To.Y == promotionRow)
+            board.Promote(move.To, isWhite);
 
         if (move.Captured is Point captured)
         {
             // Взятые шашки остаются препятствиями до конца серии.
             board.MarkCaptured(captured);
-            List<Move> nextCaptures = MovesFor(PieceAt(move.To)!).Where(step => step.Captured is not null).ToList();
+            List<Move> nextCaptures = MovesFor(PieceAt(move.To)!, move.To).Where(step => step.Captured is not null).ToList();
             if (nextCaptures.Count > 0)
             {
                 ContinuingFrom = move.To;
@@ -100,12 +112,13 @@ public sealed class Game
         }
 
         ContinuingFrom = null;
-        bool quietKingMove = piece is King && move.Captured is null;
+        bool quietKingMove = checker is King && move.Captured is null;
         quietKingMoves = quietKingMove ? quietKingMoves + 1 : 0;
         if (!quietKingMove)
             repetitions.Clear();
 
         Player mover = CurrentPlayer;
+        RecordMove(mover, move.Captured is not null);
         SwitchPlayer();
         LegalMoves = FindLegalMoves();
         if (LegalMoves.Count == 0)
@@ -116,26 +129,34 @@ public sealed class Game
             FinishDraw(DrawReason.KingMoves);
     }
 
-    private IEnumerable<Piece> BoardPieces()
+    private void RecordMove(Player mover, bool isCapture)
+    {
+        string separator = isCapture ? ":" : "–";
+        string route = string.Join(separator, currentRoute.Select(FormatSquare));
+        moveHistory.Add($"{moveHistory.Count + 1}. {mover.GetName()}  {route}");
+        currentRoute.Clear();
+    }
+
+    private static string FormatSquare(Point point) => $"{(char)('a' + point.X)}{Board.Size - point.Y}";
+
+    private IEnumerable<(Point Cell, Checker Figure)> OccupiedCells()
     {
         for (int y = 0; y < Board.Size; y++)
         for (int x = (y + 1) % 2; x < Board.Size; x += 2)
         {
-            if (board.GetPiece(x, y) is Piece piece)
-                yield return piece;
+            if (board.GetPiece(x, y) is Checker checker)
+                yield return (new Point(x, y), checker);
         }
     }
 
-    private IEnumerable<Move> MovesFor(Piece piece)
-    {
-        Point from = piece.GetPosition();
-        return piece.GetPossibleMoves(board).Select(to => new Move(from, to, board.FindJumpedPiece(from, to)));
-    }
+    private IEnumerable<Move> MovesFor(Checker checker, Point from) =>
+        checker.GetPossibleMoves(board, from).Select(to => new Move(from, to, board.FindJumpedPiece(from, to)));
 
     private IReadOnlyList<Move> FindLegalMoves()
     {
-        List<Move> moves = BoardPieces().Where(piece => piece.IsWhite() == CurrentPlayer.IsWhite())
-            .SelectMany(MovesFor).ToList();
+        List<Move> moves = OccupiedCells()
+            .Where(cell => cell.Figure.GetColor() == CurrentPlayer.IsWhite())
+            .SelectMany(cell => MovesFor(cell.Figure, cell.Cell)).ToList();
         List<Move> captures = moves.Where(move => move.Captured is not null).ToList();
         return (captures.Count == 0 ? moves : captures).AsReadOnly();
     }
@@ -145,11 +166,10 @@ public sealed class Game
         Span<char> key = stackalloc char[Board.Size * Board.Size + 1];
         key.Fill('.');
         key[0] = CurrentPlayer.IsWhite() ? 'w' : 'b';
-        foreach (Piece piece in BoardPieces())
+        foreach (var (cell, figure) in OccupiedCells())
         {
-            Point point = piece.GetPosition();
-            char side = piece.IsWhite() ? 'w' : 'b';
-            key[point.Y * Board.Size + point.X + 1] = piece is King ? char.ToUpperInvariant(side) : side;
+            char side = figure.GetColor() ? 'w' : 'b';
+            key[cell.Y * Board.Size + cell.X + 1] = figure is King ? char.ToUpperInvariant(side) : side;
         }
 
         string position = new(key);

@@ -17,8 +17,10 @@ internal sealed class GameForm : Form
     private readonly Label whiteScore;
     private readonly Label blackScore;
     private readonly Button drawButton;
+    private readonly RichTextBox moveHistory;
     private readonly Font headingFont = new("Segoe UI", 24f, FontStyle.Bold);
     private readonly Font statusFont = new("Segoe UI", 15f, FontStyle.Bold);
+    private int historyEntriesShown;
 
     public GameForm()
     {
@@ -27,7 +29,7 @@ internal sealed class GameForm : Form
         AutoScaleDimensions = new SizeF(96, 96);
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(918, 644);
-        MinimumSize = new Size(670, 505);
+        MinimumSize = new Size(670, 540);
         BackColor = Background;
         ForeColor = TextColor;
 
@@ -45,11 +47,11 @@ internal sealed class GameForm : Form
 
         var sidebar = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 9,
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 10,
             Padding = new Padding(16), Margin = Padding.Empty, BackColor = PanelBackground, TabIndex = 1
         };
         sidebar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        foreach (int height in new[] { 52, 40, 54, 8, 36, 36 })
+        foreach (int height in new[] { 52, 40, 54, 8, 36, 36, 28 })
             sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
@@ -70,12 +72,28 @@ internal sealed class GameForm : Form
         sidebar.Controls.Add(whiteScore, 0, 4);
         sidebar.Controls.Add(blackScore, 0, 5);
 
+        sidebar.Controls.Add(CreateLabel("История ходов", TextColor), 0, 6);
+        moveHistory = new RichTextBox
+        {
+            AccessibleName = "История ходов",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 0, 8),
+            BackColor = Background,
+            ForeColor = TextColor,
+            BorderStyle = BorderStyle.None,
+            ReadOnly = true,
+            DetectUrls = false,
+            ScrollBars = RichTextBoxScrollBars.Vertical,
+            WordWrap = true
+        };
+        sidebar.Controls.Add(moveHistory, 0, 7);
+
         var newGameButton = CreateButton("Новая партия", Accent, Background);
         newGameButton.Click += (_, _) => StartNewGame();
-        sidebar.Controls.Add(newGameButton, 0, 7);
+        sidebar.Controls.Add(newGameButton, 0, 8);
         drawButton = CreateButton("Согласиться на ничью", Background, TextColor);
         drawButton.Click += (_, _) => AgreeDraw();
-        sidebar.Controls.Add(drawButton, 0, 8);
+        sidebar.Controls.Add(drawButton, 0, 9);
 
         layout.Controls.Add(sidebar, 1, 0);
         Controls.Add(layout);
@@ -87,6 +105,7 @@ internal sealed class GameForm : Form
         whiteScore.Text = $"Белые   ·   {game.CountPieces(isWhite: true)}";
         blackScore.Text = $"Чёрные   ·   {game.CountPieces(isWhite: false)}";
         drawButton.Enabled = !game.IsFinished && game.ContinuingFrom is null;
+        RefreshMoveHistory();
 
         if (game.Winner is Player winner)
         {
@@ -113,6 +132,29 @@ internal sealed class GameForm : Form
             else
                 hint.Text = "Выберите шашку и клетку для хода.";
         }
+    }
+
+    private void RefreshMoveHistory()
+    {
+        IReadOnlyList<string> entries = game.MoveHistory;
+        if (historyEntriesShown > entries.Count)
+        {
+            moveHistory.Clear();
+            historyEntriesShown = 0;
+        }
+
+        if (historyEntriesShown == entries.Count)
+            return;
+
+        while (historyEntriesShown < entries.Count)
+        {
+            string separator = historyEntriesShown == 0 ? "" : Environment.NewLine;
+            moveHistory.AppendText(separator + entries[historyEntriesShown]);
+            historyEntriesShown++;
+        }
+
+        moveHistory.Select(moveHistory.TextLength, 0);
+        moveHistory.ScrollToCaret();
     }
 
     private void StartNewGame()

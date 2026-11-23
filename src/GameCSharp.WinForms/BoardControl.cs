@@ -76,7 +76,7 @@ internal sealed class BoardControl : Control
                 e.Graphics.FillRectangle(dark, Rectangle.Inflate(bounds, -border, -border));
             }
 
-            if (game.PieceAt(square) is Piece piece)
+            if (game.PieceAt(square) is Checker piece)
                 DrawPiece(e.Graphics, bounds, piece, game.WasCapturedThisTurn(square));
 
             if (destinations.Contains(square))
@@ -98,9 +98,9 @@ internal sealed class BoardControl : Control
         }
     }
 
-    private static void DrawPiece(Graphics graphics, Rectangle cell, Piece piece, bool captured)
+    private static void DrawPiece(Graphics graphics, Rectangle cell, Checker piece, bool captured)
     {
-        bool white = piece.IsWhite();
+        bool white = piece.GetColor();
         int inset = Math.Max(2, cell.Width / 8);
         Rectangle disc = Rectangle.Inflate(cell, -inset, -inset);
         using var shadow = new SolidBrush(Color.FromArgb(captured ? 35 : 94, 13, 24, 24));
@@ -218,8 +218,8 @@ internal sealed class BoardControl : Control
     {
         string contents = game.PieceAt(keyboardSquare) switch
         {
-            King king => king.IsWhite() ? "белая дамка" : "чёрная дамка",
-            Checker checker => checker.IsWhite() ? "белая шашка" : "чёрная шашка",
+            King king => king.GetColor() ? "белая дамка" : "чёрная дамка",
+            Checker checker => checker.GetColor() ? "белая шашка" : "чёрная шашка",
             _ => "пустая клетка"
         };
         string address = $"{(char)('a' + keyboardSquare.X)}{Board.Size - keyboardSquare.Y}";

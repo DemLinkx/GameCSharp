@@ -2,14 +2,14 @@ using System.Drawing;
 
 namespace GameCSharp.Core;
 
-public sealed class King(Point position, bool isWhite) : Piece(position, isWhite)
+public sealed class King(bool isWhite) : Checker(isWhite)
 {
-    public override List<Point> GetPossibleMoves(Board board)
+    public override List<Point> GetPossibleMoves(Board board, Point from)
     {
         var moves = new List<Point>();
-        Point from = GetPosition();
+        bool white = GetColor();
 
-        foreach (var (dx, dy) in Diagonals)
+        foreach (var (dx, dy) in Board.Diagonals)
         {
             bool jumpedOpponent = false;
             for (int x = from.X + dx, y = from.Y + dy; board.IsInside(x, y); x += dx, y += dy)
@@ -20,7 +20,7 @@ public sealed class King(Point position, bool isWhite) : Piece(position, isWhite
                     continue;
                 }
 
-                if (jumpedOpponent || !IsOpponent(board, x, y))
+                if (jumpedOpponent || !board.IsUncapturedOpponent(x, y, white))
                     break;
 
                 jumpedOpponent = true;

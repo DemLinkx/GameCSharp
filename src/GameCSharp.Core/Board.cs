@@ -5,8 +5,11 @@ namespace GameCSharp.Core;
 public sealed class Board
 {
     public const int Size = 8;
-    private readonly Piece?[,] pieces = new Piece?[Size, Size];
+    private static readonly (int X, int Y)[] DiagonalOffsets = [(-1, -1), (1, -1), (-1, 1), (1, 1)];
+    private readonly Checker?[,] pieces = new Checker?[Size, Size];
     private readonly HashSet<Point> captured = [];
+
+    internal static ReadOnlySpan<(int X, int Y)> Diagonals => DiagonalOffsets;
 
     public void Initialize()
     {
@@ -17,13 +20,13 @@ public sealed class Board
         for (int x = (y + 1) % 2; x < Size; x += 2)
         {
             if (y < 3 || y >= Size - 3)
-                pieces[x, y] = new Checker(new Point(x, y), isWhite: y >= Size - 3);
+                pieces[x, y] = new Checker(isWhite: y >= Size - 3);
         }
     }
 
     public bool IsInside(int x, int y) => x is >= 0 and < Size && y is >= 0 and < Size;
 
-    public Piece? GetPiece(int x, int y) => IsInside(x, y) ? pieces[x, y] : null;
+    public Checker? GetPiece(int x, int y) => IsInside(x, y) ? pieces[x, y] : null;
 
     public void MovePiece(Point from, Point to)
     {
@@ -33,14 +36,16 @@ public sealed class Board
 
         pieces[from.X, from.Y] = null;
         pieces[to.X, to.Y] = piece;
-        piece.Position = to;
     }
 
     public void RemovePiece(int x, int y) => pieces[x, y] = null;
 
-    internal void Promote(Point point, bool isWhite) => pieces[point.X, point.Y] = new King(point, isWhite);
+    internal void Promote(Point point, bool isWhite) => pieces[point.X, point.Y] = new King(isWhite);
 
     internal bool WasCaptured(Point point) => captured.Contains(point);
+
+    internal bool IsUncapturedOpponent(int x, int y, bool isWhite) =>
+        GetPiece(x, y) is Checker checker && checker.GetColor() != isWhite && !WasCaptured(new Point(x, y));
 
     internal void MarkCaptured(Point point) => captured.Add(point);
 
